@@ -1,0 +1,38 @@
+name: Orbit data
+
+# Mirrors CelesTrak orbital elements to the `data` branch every 2 hours.
+# CelesTrak allows one download per group per IP every 2 h; serving one shared
+# copy means no visitor (or the Hostinger server) ever hits that limit.
+on:
+  schedule:
+    - cron: "7 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: orbit-data
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Previous data
+        run: git fetch --depth=1 origin data && git worktree add previous origin/data || mkdir -p previous/gp
+      - name: Download from CelesTrak
+        run: node scripts/mirror.mjs out/gp previous/gp
+      - name: Publish to the data branch
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "orbit-data-bot"
+          git config user.email "orbit-data-bot@users.noreply.github.com"
+          git add gp
+          git commit -q -m "Orbital elements $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" data
